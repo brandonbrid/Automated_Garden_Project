@@ -1,0 +1,145 @@
+# External module imp
+import RPi.GPIO as GPIO
+import datetime
+import time
+
+init = False
+
+GPIO.setmode(GPIO.BOARD) # Broadcom pin-numbering scheme
+
+def get_last_watered():
+    try:
+        f = open("last_watered.txt", "r")
+        return f.readline()
+    except:
+        return "NEVER!"
+      
+def get_status(pin = 8):
+    GPIO.setup(pin, GPIO.IN) 
+    return GPIO.input(pin)
+
+def init_output(pin):
+    GPIO.setup(pin, GPIO.OUT)
+    GPIO.output(pin, GPIO.LOW)
+    GPIO.output(pin, GPIO.HIGH)
+    
+def auto_water(delay = 5, pump_pin = 7, water_sensor_pin = 8):
+    consecutive_water_count = 0
+    init_output(pump_pin)
+    print("Here we go! Press CTRL+C to exit")
+    try:
+        while 1 and consecutive_water_count < 10:
+            time.sleep(delay)
+            wet = get_status(pin = water_sensor_pin) == 0
+            if not wet:
+                if consecutive_water_count < 5:
+                    pump_on(pump_pin, 1)
+                consecutive_water_count += 1
+            else:
+                consecutive_water_count = 0
+    except KeyboardInterrupt: # If CTRL+C is pressed, exit cleanly:
+        GPIO.cleanup() # cleanup all GPI
+
+def pump_on(pump_pin = 7, delay = 1):
+    init_output(pump_pin)
+    f = open("last_watered.txt", "w")
+    f.write("Last watered {}".format(datetime.datetime.now()))
+    f.close()
+    GPIO.output(pump_pin, GPIO.LOW)
+    time.sleep(1)
+    GPIO.output(pump_pin, GPIO.HIGH)
+    
+    
+    
+    
+    
+import water
+if __name__ == "__main__":
+    water.auto_water()
+    
+from flask import Flask, render_template, redirect, url_for
+import psutil
+import datetime
+import water
+import os
+
+app = Flask(__name__)
+
+def template(title = "HELLO!", text = ""):
+    now = datetime.datetime.now()
+    timeString = now
+    templateDate = {
+        'title' : title,
+        'time' : timeString,
+        'text' : text
+        }
+    return templateDate
+
+@app.route("/")
+def hello():
+    templateData = template()
+    return render_template('main.html', **templateData)
+
+@app.route("/last_watered")
+def check_last_watered():
+    templateData = template(text = water.get_last_watered())
+    return render_template('main.html', **templateData)
+
+@app.route("/sensor")
+def action():
+    status = water.get_status()
+    message = ""
+    if (status == 1):
+        message = "Water me please!"
+    else:
+        message = "I'm a happy plant"
+
+    templateData = template(text = message)
+    return render_template('main.html', **templateData)
+
+@app.route("/water")
+def action2():
+    water.pump_on()
+    templateData = template(text = "Watered Once")
+    return render_template('main.html', **templateData)
+
+@app.route("/auto/water/<toggle>")
+def auto_water(toggle):
+    running = False
+    if toggle == "ON":
+        templateData = template(text = "Auto Watering On")
+        for process in psutil.process_iter():
+            try:
+                if process.cmdline()[1] == 'auto_water.py':
+                    templateData = template(text = "Already running")
+                    running = True
+            except:
+                pass
+        if not running:
+            os.system("python3.4 auto_water.py&")
+    else:
+        templateData = template(text = "Auto Watering Off")
+        os.system("pkill -f water.py")
+
+    return render_template('main.html', **templateData)
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=80, debug=True)
+    
+<!DOCTYPE html>
+<head>
+  <title>{{ title }}</title>
+</head>
+
+<body>
+  <h1>PLANT HELPLINE</h1>
+  <h2>The date and time on the server is: {{ time }}</h2>
+  <h2> {{ text }} </h2>
+  <a href="/auto/water/ON"><button>Turn ON Auto Watering</button></a>
+  <a href="/auto/water/OFF"><button>Turn OFF Auto Watering</button></a>
+  <a href="/sensor"><button>Check Soil Status</button></a> <br>
+  <a href="/water"><button>Water Once</button></a>
+  <a href="/last_watered"><button>Check Time Last Watered</button></a>
+
+</body>
+</html>
