@@ -1,145 +1,77 @@
-# External module imp
 import RPi.GPIO as GPIO
-import datetime
 import time
+import smtplib
 
-init = False
+from pyowm import OWM
 
-GPIO.setmode(GPIO.BOARD) # Broadcom pin-numbering scheme
+API_key = '7e94c28a5798383da72b3e7608b752e9'
+owm = OWM(API_key)
+#obs = owm.weather_at_place('Seoul')
+obs = owm.weather_at_place('Lynchburg')
+w = obs.get_weather()
 
-def get_last_watered():
-    try:
-        f = open("last_watered.txt", "r")
-        return f.readline()
-    except:
-        return "NEVER!"
-      
-def get_status(pin = 8):
-    GPIO.setup(pin, GPIO.IN) 
-    return GPIO.input(pin)
+#The Weather User Code
+print('-------------------------------------------------')
+print('Lynchburg :', w.get_status(), w.get_temperature(unit='celsius')['temp'], 'C')
+print('-------------------------------------------------')
 
-def init_output(pin):
-    GPIO.setup(pin, GPIO.OUT)
-    GPIO.output(pin, GPIO.LOW)
-    GPIO.output(pin, GPIO.HIGH)
-    
-def auto_water(delay = 5, pump_pin = 7, water_sensor_pin = 8):
-    consecutive_water_count = 0
-    init_output(pump_pin)
-    print("Here we go! Press CTRL+C to exit")
-    try:
-        while 1 and consecutive_water_count < 10:
-            time.sleep(delay)
-            wet = get_status(pin = water_sensor_pin) == 0
-            if not wet:
-                if consecutive_water_count < 5:
-                    pump_on(pump_pin, 1)
-                consecutive_water_count += 1
-            else:
-                consecutive_water_count = 0
-    except KeyboardInterrupt: # If CTRL+C is pressed, exit cleanly:
-        GPIO.cleanup() # cleanup all GPI
+print('Temperature : ', w.get_temperature(unit='fahrenheit')['temp'], 'F')
+print('Humidity    : ', w.get_humidity(), '%')
+print('Pressure    : ', w.get_pressure(), ' ')
 
-def pump_on(pump_pin = 7, delay = 1):
-    init_output(pump_pin)
-    f = open("last_watered.txt", "w")
-    f.write("Last watered {}".format(datetime.datetime.now()))
-    f.close()
-    GPIO.output(pump_pin, GPIO.LOW)
-    time.sleep(1)
-    GPIO.output(pump_pin, GPIO.HIGH)
-    
-    
-    
-    
-    
-import water
-if __name__ == "__main__":
-    water.auto_water()
-    
-from flask import Flask, render_template, redirect, url_for
-import psutil
-import datetime
-import water
-import os
+print('Clouds      : ', w.get_clouds(), ' ')
+print('Wind        : ', w.get_wind(), ' ')
+print('Rain volume : ', w.get_rain(), ' ')
+print('Snow volume : ', w.get_snow(), ' ')
 
-app = Flask(__name__)
 
-def template(title = "HELLO!", text = ""):
-    now = datetime.datetime.now()
-    timeString = now
-    templateDate = {
-        'title' : title,
-        'time' : timeString,
-        'text' : text
-        }
-    return templateDate
+content = ('Rain volume : ', w.get_rain(), ' ')
 
-@app.route("/")
-def hello():
-    templateData = template()
-    return render_template('main.html', **templateData)
+mail = smtplib.SMTP('smtp.gmail.com',587)
 
-@app.route("/last_watered")
-def check_last_watered():
-    templateData = template(text = water.get_last_watered())
-    return render_template('main.html', **templateData)
+mail.ehlo ()
 
-@app.route("/sensor")
-def action():
-    status = water.get_status()
-    message = ""
-    if (status == 1):
-        message = "Water me please!"
-    else:
-        message = "I'm a happy plant"
+mail.starttls()
 
-    templateData = template(text = message)
-    return render_template('main.html', **templateData)
+mail.login('byangves@gmail.com','Yangyifan02$')
 
-@app.route("/water")
-def action2():
-    water.pump_on()
-    templateData = template(text = "Watered Once")
-    return render_template('main.html', **templateData)
+mail.sendmail('byangves@gmail.com', 'brandonbrid15@gmail.com' , content)
 
-@app.route("/auto/water/<toggle>")
-def auto_water(toggle):
-    running = False
-    if toggle == "ON":
-        templateData = template(text = "Auto Watering On")
-        for process in psutil.process_iter():
-            try:
-                if process.cmdline()[1] == 'auto_water.py':
-                    templateData = template(text = "Already running")
-                    running = True
-            except:
-                pass
-        if not running:
-            os.system("python3.4 auto_water.py&")
-    else:
-        templateData = template(text = "Auto Watering Off")
-        os.system("pkill -f water.py")
+mail.close()
+                
+#GPIO SETUP
+channel = 21
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(channel, GPIO.IN)
+ 
+def callback(channel):
+        if GPIO.input(channel):
+                print ('no Water Detected!')
 
-    return render_template('main.html', **templateData)
+                content = 'no water in the water garden. please water'
 
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=80, debug=True)
-    
-<!DOCTYPE html>
-<head>
-  <title>{{ title }}</title>
-</head>
+                mail = smtplib.SMTP('smtp.gmail.com',587)
 
-<body>
-  <h1>PLANT HELPLINE</h1>
-  <h2>The date and time on the server is: {{ time }}</h2>
-  <h2> {{ text }} </h2>
-  <a href="/auto/water/ON"><button>Turn ON Auto Watering</button></a>
-  <a href="/auto/water/OFF"><button>Turn OFF Auto Watering</button></a>
-  <a href="/sensor"><button>Check Soil Status</button></a> <br>
-  <a href="/water"><button>Water Once</button></a>
-  <a href="/last_watered"><button>Check Time Last Watered</button></a>
+                mail.ehlo ()
 
-</body>
-</html>
+                mail.starttls()
+
+                mail.login('byangves@gmail.com','Yangyifan02$')
+
+                mail.sendmail('byangves@gmail.com', 'brandonbrid15@gmail.com' , content)
+
+                mail.close()
+
+                time.sleep(120)
+
+                
+        else:
+                print ("Water Detected!")
+ 
+GPIO.add_event_detect(channel, GPIO.BOTH, bouncetime=300)  # let us know when the pin goes HIGH or LOW
+GPIO.add_event_callback(channel, callback)  # assign function to GPIO PIN, Run function on change
+ 
+# infinite loop
+while True:
+        time.sleep(1)
+        callback(21)
